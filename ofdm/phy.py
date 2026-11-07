@@ -167,7 +167,11 @@ def find_sync(cfg: PhyConfig, rx: np.ndarray) -> int:
     """Index of the first sample after the chirp (direct path), or -1."""
     c = np.abs(fftconvolve(rx, cfg.sync[::-1], mode="valid"))
     peak = int(np.argmax(c))
-    if c[peak] < 6 * np.median(c):
+    # room noise alone reaches max/median ~7-8 and a normalised correlation <= 0.01; real frames
+    # (even jammed) give >= 16 and >= 0.09
+    win = rx[peak: peak + len(cfg.sync)]
+    ncorr = c[peak] / np.sqrt(max(np.sum(win ** 2) * np.sum(cfg.sync ** 2), 1e-30))
+    if c[peak] < 12 * np.median(c) or ncorr < 0.05:
         return -1
     lo = max(0, peak - int(0.03 * cfg.fs))                            # earliest strong arrival
     early = lo + int(np.argmax(c[lo:peak + 1] > 0.5 * c[peak]))

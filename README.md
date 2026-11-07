@@ -1,10 +1,92 @@
-# Sound Modem
+# Data over sound
 
-A modular sound modem that transmits digital data over audio using MFSK (Multi-Frequency Shift Keying) modulation.
+Two laptops talking through a speaker and a microphone, three ways:
 
-## Overview
+1. **Network card over sound (OFDM)**: `ofdm/` — an adaptive OFDM modem (~6-9 kbit/s) exposed as
+   a Linux network interface; ping, UDP and TCP between the machines. Start here:
+   [install and use](#network-card-over-sound-ofdm--install-and-use).
+2. **IP over AX.25** (`ax25/`): Direwolf soft-modem + the kernel packet-radio stack, 100 baud.
+3. **File transfer with minimodem** (`main.py`): the original proof of concept, now working.
 
-This project provides a complete system for transmitting digital data over audio channels. It uses the following components:
+The rest of this README describes each, the measurements behind the design and how to reproduce
+them.
+
+## Network card over sound (OFDM) — install and use
+
+`ofdm/netd.py` turns the adaptive OFDM modem into a Linux network interface (`ofdm0`): ping,
+UDP and TCP run over the speaker and microphone between two machines, with the band adapting
+to noise as it changes. The modem runs on each machine itself; nothing else is needed.
+
+**Requirements (both machines):** Linux with a PipeWire desktop session (`pw-record`/`pw-play`),
+the `tun` kernel module, `sudo`, Python 3 with `numpy`, `scipy` and `reedsolo`, and a speaker and a
+microphone that can hear each other (we used two laptops ~1-2 m apart).
+
+### Install
+
+```bash
+git clone https://github.com/detrin/data-over-sound.git ~/data-over-sound
+
+# Ubuntu / Debian
+sudo apt install python3-numpy python3-scipy python3-reedsolo pipewire-bin
+
+# NixOS (no system Python needed): build a Python with the three packages
+nix build --impure -o ~/.local/nix/pyofdm --expr \
+  '(builtins.getFlake "nixpkgs").legacyPackages.x86_64-linux.python3.withPackages (p: [p.numpy p.scipy p.reedsolo])'
+export PYTHON=~/.local/nix/pyofdm/bin/python3        # used by ofdmnet.sh
+```
+
+Audio: set the speaker volume high and the microphone low enough not to clip, e.g.
+`wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0; wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.3`.
+
+### Use
+
+```bash
+# machine A (leader)                                   # machine B (follower)
+~/data-over-sound/ofdm/ofdmnet.sh up 10.78.0.1/24      ~/data-over-sound/ofdm/ofdmnet.sh up 10.78.0.2/24
+~/data-over-sound/ofdm/ofdmnet.sh start leader         ~/data-over-sound/ofdm/ofdmnet.sh start follower
+
+ping 10.78.0.2                                         ping 10.78.0.1
+~/data-over-sound/ofdm/ofdmnet.sh status               # interface, daemon, last log lines
+~/data-over-sound/ofdm/ofdmnet.sh stop                 # stop the daemon (interface stays)
+~/data-over-sound/ofdm/ofdmnet.sh down                 # stop and delete the interface
+```
+
+- `up` (sudo) creates a TUN device owned by your user, sets the address, MTU 1200 and a route
+  with `rto_min 5s`; `start` runs the daemon unprivileged in your session and logs to
+  `/tmp/ofdmnet.log` (one line per received frame: tiles decoded, levels in use, SNR, queue).
+- Start it from the logged-in desktop user (over ssh is fine: it sets `XDG_RUNTIME_DIR`). One
+  machine must be the leader, the other the follower; the leader starts the exchange.
+- Environment overrides: `DEV`, `MTU`, `RTO_MIN`, `PYTHON`, `LOG`.
+
+**Measured between dell-g5 (leader) and e540 (follower), 2026-11-07:** ping both ways 0% loss
+(RTT 18-50 s); UDP request/reply both ways (46 s); one TCP connection moved an 81,628-byte JPEG
+one way and a 10,751-byte file the other way, both SHA-256 identical, in 312 s (~2.4 kbit/s of
+TCP goodput including handshake and slow start). The maps settle at mostly D8PSK with ~80-90 of
+92 tiles decoding per frame in a quiet room.
+
+**What to expect.** One frame is 6.8 s; the two machines take turns, so a packet waits up to
+~15 s for its slot and a round trip takes ~20-50 s. Each frame carries up to ~8 KB (6-9 kbit/s
+per direction when the room is quiet). It is a very long, thin pipe: fine for ping, UDP, file
+transfer and patient TCP; interactive use (ssh) works but each keystroke takes half a minute.
+
+**Firewalls.** Packets on `ofdm0` look like any other interface. NixOS' default firewall drops
+new inbound connections, so connections must be started from the NixOS side unless you trust the
+interface: `networking.firewall.trustedInterfaces = [ "ofdm0" ];`. It also forgets an unanswered
+UDP flow after 30 s, shorter than one round trip here, so UDP request/response from behind it
+needs keepalives (or the trusted interface).
+
+**Troubleshooting**
+- Log says `no answer from follower`: the follower is not running, or cannot hear the leader
+  (volume, distance, `ofdmnet.sh status` on the follower).
+- Nothing decodes after the machine's desktop session restarted: the login screen may own the
+  sound card (`wpctl status` shows only "Dummy Output"); switch back to your session
+  (`sudo chvt <your VT>`) or log in again.
+- Moved the machines? The modem adapts on its own; for best results re-run the room measurement
+  and calibration (`uv run python -m ofdm.measure_channel && uv run python -m ofdm.calibrate`).
+
+## Overview (minimodem file transfer)
+
+A modular sound modem that transmits digital data over audio using MFSK (Multi-Frequency Shift Keying) modulation. It uses the following components:
 
 1. **packet_framer.py**: Handles packet framing, error correction, and reliable transmission
 2. **sound_packet_bridge.py**: Bridges the packet framer with minimodem for audio transmission
