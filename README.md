@@ -1,214 +1,193 @@
 # Data over sound
 
-Two laptops talking through a speaker and a microphone, three ways:
+Two laptops talking through a speaker and a microphone. The main implementation is a single Rust
+binary, `dos`:
 
-1. **Network card over sound (OFDM)**: `ofdm/` — an adaptive OFDM modem (~6-9 kbit/s) exposed as
-   a Linux network interface; ping, UDP and TCP between the machines. Start here:
-   [install and use](#network-card-over-sound-ofdm--install-and-use).
-2. **IP over AX.25** (`ax25/`): Direwolf soft-modem + the kernel packet-radio stack, 100 baud.
-3. **File transfer with minimodem** (`main.py`): the original proof of concept, now working.
+- **Network card over sound**: an adaptive OFDM modem (~6-9 kbit/s on air) exposed as a Linux
+  network interface; ping, UDP and TCP between the machines.
+- **File transfer**: the same modem moving files both ways, and the original 100 baud minimodem
+  transfer.
+- **Research tools**: room measurement, channel simulator, SNR-model calibration and a comparison
+  of link-adaptation strategies, in simulation and over the air with broadcast noise.
 
-The rest of this README describes each, the measurements behind the design and how to reproduce
-them.
+The Python implementation it was ported from is kept as the **reference implementation**
+(`ofdm/`, `main.py`): the two are wire-compatible and tested against each other
+([Rust and Python](#rust-and-python-interop-and-tests)). `ax25/` is a separate, slower IP link over
+Direwolf and the kernel AX.25 stack.
 
-## Network card over sound (OFDM) — install and use
+## Install
 
-`ofdm/netd.py` turns the adaptive OFDM modem into a Linux network interface (`ofdm0`): ping,
-UDP and TCP run over the speaker and microphone between two machines, with the band adapting
-to noise as it changes. The modem runs on each machine itself; nothing else is needed.
-
-**Requirements (both machines):** Linux with a PipeWire desktop session (`pw-record`/`pw-play`),
-the `tun` kernel module, `sudo`, Python 3 with `numpy`, `scipy` and `reedsolo`, and a speaker and a
-microphone that can hear each other (we used two laptops ~1-2 m apart).
-
-### Install
+Runtime requirements on each machine: Linux, a PipeWire desktop session (`pw-record`,
+`pw-play`), the `tun` kernel module and `sudo`; `minimodem` only for `dos modem`.
 
 ```bash
-git clone https://github.com/detrin/data-over-sound.git ~/data-over-sound
-
-# Ubuntu / Debian
-sudo apt install python3-numpy python3-scipy python3-reedsolo pipewire-bin
-
-# NixOS (no system Python needed): build a Python with the three packages
-nix build --impure -o ~/.local/nix/pyofdm --expr \
-  '(builtins.getFlake "nixpkgs").legacyPackages.x86_64-linux.python3.withPackages (p: [p.numpy p.scipy p.reedsolo])'
-export PYTHON=~/.local/nix/pyofdm/bin/python3        # used by ofdmnet.sh
+git clone https://github.com/detrin/data-over-sound.git && cd data-over-sound
+cargo build --release                      # -> target/release/dos
+install -m 755 target/release/dos ~/.local/bin/dos
 ```
 
-Audio: set the speaker volume high and the microphone low enough not to clip, e.g.
-`wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0; wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.3`.
-
-### Use
+A static binary that runs on any x86_64 Linux (including NixOS, no libraries needed) can be built
+once and copied to the other machines:
 
 ```bash
-# machine A (leader)                                   # machine B (follower)
-~/data-over-sound/ofdm/ofdmnet.sh up 10.78.0.1/24      ~/data-over-sound/ofdm/ofdmnet.sh up 10.78.0.2/24
-~/data-over-sound/ofdm/ofdmnet.sh start leader         ~/data-over-sound/ofdm/ofdmnet.sh start follower
-
-ping 10.78.0.2                                         ping 10.78.0.1
-~/data-over-sound/ofdm/ofdmnet.sh status               # interface, daemon, last log lines
-~/data-over-sound/ofdm/ofdmnet.sh stop                 # stop the daemon (interface stays)
-~/data-over-sound/ofdm/ofdmnet.sh down                 # stop and delete the interface
+rustup target add x86_64-unknown-linux-musl   # Debian/Ubuntu also need: sudo apt install musl-tools
+cargo build --release --target x86_64-unknown-linux-musl
+scp target/x86_64-unknown-linux-musl/release/dos other-machine:.local/bin/dos
 ```
 
-- `up` (sudo) creates a TUN device owned by your user, sets the address, MTU 1200 and a route
-  with `rto_min 5s`; `start` runs the daemon unprivileged in your session and logs to
-  `/tmp/ofdmnet.log` (one line per received frame: tiles decoded, levels in use, SNR, queue).
-- Start it from the logged-in desktop user (over ssh is fine: it sets `XDG_RUNTIME_DIR`). One
-  machine must be the leader, the other the follower; the leader starts the exchange.
-- Environment overrides: `DEV`, `MTU`, `RTO_MIN`, `PYTHON`, `LOG`.
+Audio levels: speaker high, microphone low enough not to clip, e.g.
+`wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0; wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.2`.
+Don't compile or run heavy jobs on a machine while it is a modem: its fans are noise in the band.
 
-**Measured between dell-g5 (leader) and e540 (follower), 2026-11-07:** ping both ways 0% loss
-(RTT 18-50 s); UDP request/reply both ways (46 s); one TCP connection moved an 81,628-byte JPEG
-one way and a 10,751-byte file the other way, both SHA-256 identical, in 312 s (~2.4 kbit/s of
-TCP goodput including handshake and slow start). The maps settle at mostly D8PSK with ~80-90 of
-92 tiles decoding per frame in a quiet room.
+## Network card
 
-**What to expect.** One frame is 6.8 s; the two machines take turns, so a packet waits up to
-~15 s for its slot and a round trip takes ~20-50 s. Each frame carries up to ~8 KB (6-9 kbit/s
-per direction when the room is quiet). It is a very long, thin pipe: fine for ping, UDP, file
-transfer and patient TCP; interactive use (ssh) works but each keystroke takes half a minute.
+```bash
+# machine A                                  # machine B
+dos net up 10.78.0.1/24                      dos net up 10.78.0.2/24
+dos net start leader                         dos net start follower
 
-**Firewalls.** Packets on `ofdm0` look like any other interface. NixOS' default firewall drops
-new inbound connections, so connections must be started from the NixOS side unless you trust the
-interface: `networking.firewall.trustedInterfaces = [ "ofdm0" ];`. It also forgets an unanswered
-UDP flow after 30 s, shorter than one round trip here, so UDP request/response from behind it
-needs keepalives (or the trusted interface).
+ping 10.78.0.2                               ping 10.78.0.1
+dos net status                               # interface, daemon, last log lines
+dos net stop                                 # stop the daemon (the interface stays)
+dos net down                                 # stop and delete the interface
+```
+
+- `dos net up` (sudo) creates a TUN device `ofdm0` owned by your user, sets the address, MTU 576
+  and a route with `rto_min 5s`. `dos net start` runs the daemon unprivileged in your session
+  (over ssh too) and logs to `/tmp/dos-net.log`, one line per received frame: tiles decoded,
+  levels in use, SNR, queue. `dos net run --role leader` runs it in the foreground.
+- One machine is the leader, the other the follower: they take strict turns, so frames never
+  collide. Options: `--dev`, `--log`, `--mtu`, `--rto-min`, `--idle-gap`.
+
+**What to expect.** One frame lasts 6.8 s and the machines alternate, so a packet waits up to
+~15 s for its slot and a round trip takes ~17-50 s. A frame carries up to ~8 KB when the room is
+quiet. It is a long, thin pipe: fine for ping, UDP and patient TCP; interactive ssh works but
+each keystroke takes half a minute. Throughput falls with room noise: the band adapts tile by
+tile, down to a robust level that carries 10x less.
+
+**Firewalls.** NixOS' default firewall drops new inbound connections on `ofdm0`; start them from
+the NixOS side or trust the interface: `networking.firewall.trustedInterfaces = [ "ofdm0" ];`.
+It also forgets an unanswered UDP flow after 30 s, shorter than a round trip here, so UDP
+request/response from behind it needs keepalives (or the trusted interface).
 
 **Troubleshooting**
-- Log says `no answer from follower`: the follower is not running, or cannot hear the leader
-  (volume, distance, `ofdmnet.sh status` on the follower).
-- Nothing decodes after the machine's desktop session restarted: the login screen may own the
-  sound card (`wpctl status` shows only "Dummy Output"); switch back to your session
-  (`sudo chvt <your VT>`) or log in again.
-- Moved the machines? The modem adapts on its own; for best results re-run the room measurement
-  and calibration (`uv run python -m ofdm.measure_channel && uv run python -m ofdm.calibrate`).
+- `no answer from follower (timeout)` in the leader's log: the follower is not running or cannot
+  hear the leader (volume, distance, `dos net status` on the follower).
+- Nothing decodes after the desktop session restarted: the login screen may own the sound card
+  (`wpctl status` shows only "Dummy Output"); switch back to your session (`sudo chvt <VT>`).
+- Moved the machines or the room changed: the modem adapts on its own; for best results
+  re-measure and re-calibrate (`dos measure`, `dos calibrate`, rebuild).
 
-## Overview (minimodem file transfer)
+## File transfer and tools
 
-A modular sound modem that transmits digital data over audio using MFSK (Multi-Frequency Shift Keying) modulation. It uses the following components:
-
-1. **packet_framer.py**: Handles packet framing, error correction, and reliable transmission
-2. **sound_packet_bridge.py**: Bridges the packet framer with minimodem for audio transmission
-3. **minimodem**: External tool for MFSK modulation/demodulation
-4. **main.py**: Integrates all components for easy use
-
-The system supports:
-- COBS (Consistent Overhead Byte Stuffing) for packet framing
-- Reed-Solomon forward error correction
-- CRC32 integrity check on every frame
-- Stop-and-Wait ARQ for reliable transmission (the final EOT is ACKed too)
-- Queue-based communication between components
-
-## Requirements
-
-- Python 3.6+
-- minimodem (https://github.com/kamalmostafa/minimodem)
-- reedsolo Python package (optional, for FEC)
-
-## Installation
-
-1. Install minimodem:
-   ```
-   # On Ubuntu/Debian
-   sudo apt-get install minimodem
-   
-   # On macOS with Homebrew
-   brew install minimodem
-   ```
-
-2. Install Python dependencies:
-   ```
-   pip install reedsolo
-   ```
-
-## Usage
-
-### Usage
-
-Start the receiver first, then the transmitter. Both sides must use the same modem options.
-
-```
-# Receiver
-python main.py --baud 100 --mark 2300 --space 1900 --fec --arq rx output.txt
-
-# Transmitter
-python main.py --baud 100 --mark 2300 --space 1900 --fec --arq tx input.txt
+```bash
+dos duplex --air --noise --file-a A.bin --file-b B.bin   # two-way adaptive transfer over the air
+dos duplex --noise                                        # the same in the simulator
+dos modem recv out.bin                                    # minimodem receiver (start first)
+dos modem send file.bin                                   # minimodem sender (100 baud, 2300/1900 Hz)
+dos check                                                 # PHY loopback + simulated room
+dos measure                                               # impulse response + noise, both directions
+dos calibrate                                             # SNR -> success model (then rebuild)
+dos simulate [--finalists]                                # strategy comparison in the simulator
+dos compare --finalists                                   # strategy comparison over the air (~40 min)
 ```
 
-Pick `--mark`/`--space` where the speaker-to-microphone path is flat: laptop speakers are weak
-below ~1 kHz, and minimodem's default 1270/1070 Hz pair arrived with the 1070 Hz tone 15 dB down,
-which made every decode fail. 2300/1900 Hz at 100 baud worked in both directions between two
-laptops (dell-g5 <-> e540), ~10-15 bit/s effective with ARQ. Keep the microphone gain low
-enough that the recording does not clip.
+`measure`, `compare` and `duplex --air` run on a control machine and drive the two laptops over
+ssh (`--hosts dell-g5,e540`); the laptops only play and record.
 
-## Adaptive OFDM modem (`ofdm/`): ~6-9 kbit/s, adapts to changing noise
+## How it works
 
-A multi-carrier modem tuned on the real room between the two laptops, with per-tile link
-adaptation. All DSP runs on the Mac; the laptops only play and record (`ofdm/air.py`).
+**The room.** The impulse response between the laptops is very reverberant: 60 ms after the
+direct sound the remaining echo energy is only 10-11 dB down. Short symbols drown in their own
+echoes (why AFSK above 100 baud failed). Long OFDM symbols turn most of the reverb into part of
+the channel: 640 ms symbols + 160 ms cyclic prefix, 1.5625 Hz subcarrier spacing, 800-10000 Hz,
+92 tiles of 100 Hz. Differential PSK in time needs no equaliser. The simulator built from the
+measured impulse response and noise reproduces the per-tile SNR over the air within 1-2 dB.
 
-| Module | Role |
-|---|---|
-| `measure_channel.py` | exponential-sweep impulse response + noise PSD per direction -> `data/channel_*.npz` |
-| `channel.py` | channel simulator calibrated from those measurements (+ time-varying interferers) |
-| `phy.py` | OFDM PHY: sync chirp, reference, DBPSK header, data tiles, differential PSK in time |
-| `frame.py` | per-tile blocks (payload, CRC-16, RS) and the header with feedback |
-| `calibrate.py` | header-SNR -> block-success model per level (`data/snr_model.json`) |
-| `controllers.py` | link-adaptation strategies (fixed, SNR threshold, OLLA, Minstrel, Thompson sampling) |
-| `simulate.py` / `air_compare.py` | strategy comparison in simulation / over the air with broadcast noise |
-| `duplex.py` | the two-way link: TDD, in-band feedback, selective-repeat ARQ, adaptive maps |
+**Frames.** Sync chirp, reference symbol, a DBPSK header on every subcarrier (two soft-combined
+copies, RS(255,64), byte-contiguous interleaving against narrowband noise) and six data symbols.
+Each tile carries one level: pilot, DBPSK with 3x repetition (robust fallback), DQPSK or D8PSK,
+and its own RS+CRC block, so it succeeds or fails on its own. The header gives an SNR for every
+tile in every frame: free exploration of the whole band.
 
-**What the room dictated.** The impulse response is very reverberant: even 60 ms after the direct
-sound the remaining echo energy is only 7-12 dB down. Short symbols drown in their own echoes
-(why AFSK above 100 baud failed). Long OFDM symbols turn most of the reverb into part of the
-channel: 640 ms symbols + 160 ms cyclic prefix, 1.5625 Hz spacing, 800-10000 Hz, 92 tiles of
-100 Hz. Differential PSK in time needs no equaliser. The simulator reproduces the measured
-per-tile SNR over the air within 1-2 dB.
+**Adaptation.** The receiver of each direction picks the next tile map and sends it back in its
+own header with an ACK bitmap; there is no side channel. Strategies were compared under a
+changing-noise scenario (quiet, jammer 2-4 kHz, jammer 6-9 kHz, broadband noise, 1-5 kHz bursts,
+quiet), over the air with the receiving laptop broadcasting the noise from its own speaker:
 
-**Levels per tile:** 0 = pilot (measured, no data), 1 = DBPSK x3 repetition (robust fallback),
-2 = DQPSK, 3 = D8PSK. Each tile is its own RS+CRC block, so it succeeds or fails on its own.
-The header (DBPSK on every subcarrier, two soft-combined copies, RS(255,64), byte-contiguous
-interleaving) gives an SNR for **every** tile in every frame: free exploration of the whole band.
-
-**Strategies compared** under a changing-noise scenario (`scenario.py`: quiet, jammer 2-4 kHz,
-jammer 6-9 kHz, broadband noise, 1-5 kHz bursts, quiet). Over the air the receiving laptop
-broadcasts the noise from its own speaker while it records.
-
-| | sim mean | air round 1 (D->E / E->D) | air round 2, paired vs fixed-L3 |
+| strategy | sim, Python | sim, Rust | air, paired vs fixed D8PSK |
 |---|---|---|---|
-| Thompson sampling + SNR prior (gamma 0.7) | 5.58 kbit/s | 5.41 / 5.65 | **+584 +/- 173** / -130 +/- 221 bit/s |
-| ... + online SNR-model calibration | 5.55 | - | +494 +/- 229 / -196 +/- 311 |
-| SNR greedy (max expected throughput) | 5.40 | 5.79 / 5.12 | - |
-| fixed D8PSK | 5.25 | 5.41 / 5.72 | baseline |
-| Minstrel (EWMA + 10% lookaround) | 5.01 | 5.75 / 5.15 | - |
-| OLLA (outer-loop margin, 10% BLER) | 3.95 | - | - |
+| Thompson sampling + SNR prior (gamma 0.7) | 5.58 kbit/s | 5.54 | **+584 +/- 173** / -130 +/- 221 bit/s |
+| ... + online SNR-model calibration | 5.55 | 5.50 | +494 +/- 229 / -196 +/- 311 |
+| SNR greedy (max expected throughput) | 5.40 | 5.45 | |
+| fixed D8PSK | 5.25 | 5.23 | baseline |
+| Minstrel (EWMA + 10% lookaround) | 5.01 | 4.99 | |
+| OLLA (outer-loop margin, 10% BLER) | 3.95 | 3.94 | |
 
-Thompson sampling with the calibrated SNR model as prior and discounted outcome counts is the
-chosen controller: best in simulation, significantly better than fixed D8PSK in one air
-direction (+11%) and tied in the other. Minstrel and OLLA recover slowly after a jammer leaves;
-the room is good enough that fixed D8PSK is near-optimal when quiet, so the gains come in the
-noisy phases. Flat broadband noise at +8 dB SIR (most tiles below ~4 dB) breaks every strategy.
+Thompson sampling with the calibrated SNR model as prior and discounted outcome counts is used
+for file transfer. For the network card (Rust) it is made risk-averse (maximise
+`capacity * p^2`): an IP packet spans several tiles and needs all of them, so tile reliability is
+worth more than raw tile throughput (-2% throughput, +4 points tile success in simulation).
 
-**Two-way result over the air** (`duplex.py --air --noise`, all six noise phases broadcast, 3
-rounds each): dell-g5 sent the 81,628-byte JPEG while e540 sent this README (6,601 bytes); both
-arrived byte-identical in 22 rounds. The image direction moved 81.6 KB in 22 frames (~150 s of
-its airtime, ~4.4 kbit/s) through quiet, jammed, broadband and burst phases, with the maps
-travelling only in the in-band headers.
+## Rust and Python: interop and tests
 
+The Rust port keeps the Python on-air format, so the two interoperate; the pseudo-random tables
+that define it (reference phases, pilots, header scattering) were drawn with numpy's generator
+and are exported once to `ofdm/data/wire_v1.bin`, which `dos` embeds.
+
+- `cargo test`: Reed-Solomon codewords and corrections identical to `reedsolo`; header packing,
+  sync chirp, minimodem framing (CRC32, RS, COBS, base64 markers) identical to Python; Rust
+  decodes Python frames byte-exact (`interop/golden.py` writes the vectors); loopback, file
+  selective repeat, IP fragmentation and a two-node exchange over the simulated room.
+- `dos interop-gen DIR && python interop/check_rust_frames.py DIR`: Python decodes Rust frames
+  byte-exact.
+- Simulation: the strategy comparison gives the same ranking and numbers within noise
+  (table above).
+- Over the air, dell-g5 and e540, 2026-11-08 (a VMware VM was running on dell-g5 and its fans
+  added ~4 dB of noise at that end):
+
+  | link | result |
+  |---|---|
+  | Rust leader + Rust follower | ping both ways 0% loss (RTT 17-26 s); UDP request/reply both ways; TCP: 81,628 B one way and 15,576 B the other, both SHA-256 identical, in 368 s |
+  | Rust leader + Python follower | ping both ways 0% loss; TCP both files identical (1451 s; the Python side uses its MTU-1200-era settings) |
+  | Python leader + Rust follower | ping 6/6 both ways |
+  | minimodem: Rust -> Python, Python -> Rust | 209 bytes identical each way, 122 s (13.7 bit/s) |
+  | `dos measure` | same reverb figures as the Python measurement (-4 dB beyond 20 ms, -11 dB beyond 60 ms) |
+  | `dos duplex --air --noise` (from a control machine; six broadcast noise phases) | 81,628 B and 11,191 B both ways, identical, in 26 rounds |
+
+Differences from the Python version (the on-air format is unchanged): one static binary with the
+SNR model embedded; `dos net up/start/stop/status/down` replace `ofdmnet.sh`; the network card
+uses a risk-averse controller, MTU 576, up to 6 fragment retries and better idle detection
+(round trips 17-26 s instead of 17-50 s); the simulator runs strategies in parallel; frames
+decode in ~0.1 s on the laptops.
+
+## Python reference implementation
+
+```bash
+uv sync                                         # numpy, scipy, reedsolo
+uv run python -m ofdm.check_phy                 # PHY check
+uv run python -m ofdm.measure_channel           # room measurement
+uv run python -m ofdm.simulate                  # strategy comparison
+uv run python -m ofdm.duplex --air --noise      # two-way transfer over the air
+uv run python -m ofdm.test_ofdm                 # tests
+ofdm/ofdmnet.sh up 10.78.0.1/24 && ofdm/ofdmnet.sh start leader   # network card (Python)
+python main.py --baud 100 --mark 2300 --space 1900 --fec --arq rx out.txt   # minimodem receiver
+python main.py --baud 100 --mark 2300 --space 1900 --fec --arq tx in.txt    # minimodem sender
 ```
-uv run python -m ofdm.measure_channel           # re-measure the room (laptops on, desktop session active)
-uv run python -m ofdm.calibrate                 # SNR -> success model
-uv run python -m ofdm.simulate                  # strategy comparison in simulation
-uv run python -m ofdm.air_compare --finalists   # over the air, with broadcast noise (~40 min)
-uv run python -m ofdm.duplex --air --noise      # two-way adaptive transfer over the air
-uv run python -m ofdm.test_ofdm                 # offline regression tests
-```
 
-## IP over sound (virtual network card)
+The Python network card needs numpy, scipy and reedsolo on both machines (Ubuntu:
+`apt install python3-numpy python3-scipy python3-reedsolo`; NixOS: a `python3.withPackages`
+with the three, passed as `PYTHON=` to `ofdmnet.sh`).
 
-`ax25/` turns the sound card into a Linux network interface (`ax0`) so ordinary IP, UDP and
-TCP run over the air. It uses Direwolf as a software modem (AFSK + FX.25 Reed-Solomon FEC,
-carrier-sense half-duplex) and the kernel's AX.25 stack via `kissattach`.
+**minimodem transfer.** Pick mark/space where the speaker-to-microphone path is flat: laptop
+speakers are weak below ~1 kHz, and minimodem's default 1270/1070 Hz pair arrived with the
+1070 Hz tone 15 dB down, which made every decode fail. 2300/1900 Hz at 100 baud worked in both
+directions, ~10-15 bit/s with ARQ.
+
+## IP over AX.25 (`ax25/`)
+
+A slower network card through Direwolf (AFSK + FX.25 FEC, carrier-sense half-duplex) and the
+kernel's AX.25 stack via `kissattach`:
 
 ```
 # on dell-g5                                   # on e540
@@ -217,95 +196,9 @@ ping 10.77.0.2                                 ping 10.77.0.1
 ax25/down.sh                                   ax25/down.sh
 ```
 
-Needs `direwolf`, `ax25-tools` (`kissattach`, `kissparms`), the `ax25`/`mkiss` kernel modules and
-a desktop session (Direwolf records/plays through PipeWire's ALSA plugin). Tunables are env vars:
-`MODEM` (default `100 2300:1900`, i.e. 100 baud, mark 2300 Hz, space 1900 Hz), `MTU` (200, so a
-frame fits one FX.25 RS(255,239) block), `RATE` (tbf rate on `ax0`, ~air rate with a one-packet
-queue so TCP retransmits are dropped instead of piling up behind the frame on air), `TXDELAY`,
-`RTO_MIN` (route `rto_min`, default 30s).
-
-What we measured between the two laptops: 1200 and 300 baud decoded nothing over the air;
-100 baud works with FX.25 correcting a few bytes per frame now and then. Ping RTT ~25-40 s, a
-UDP request/reply ~30 s, and one TCP connection moved ~200 bytes each way (byte-identical) in
-~9 minutes. What TCP needed on this half-duplex ~25 s-RTT channel:
-
-- a longer SYN retry budget than the default 6 (`socat ... TCP4:10.77.0.1:6000,tcp-syncnt=12`),
-  because the first SYN timeout is 1 s while a SYN takes ~13 s on air;
-- egress policers that drop repeated SYN/SYN-ACKs and cap the rest at ~half the air rate, so
-  retransmits don't keep the transmitter busy and the peer gets heard;
-- route `rto_min 30s`, MTU 200 (one FX.25 block per frame);
-- wide CSMA backoff in Direwolf (`SLOTTIME 100`, `PERSIST 32`): both ends back off identically,
-  and with the defaults their retransmits collided on air every time.
-
-The NixOS firewall drops new inbound connections on `ax0` (it trusts only `lo`/`tailscale0`),
-so on NixOS either start connections from that host or add `ax0` to
-`networking.firewall.trustedInterfaces`.
-
-## Architecture
-
-The system uses a queue-based architecture:
-
-1. **packet_framer.py** prepares data for transmission by:
-   - Splitting it into packets
-   - Adding error correction (optional)
-   - Framing with COBS
-   - Placing framed packets in a queue
-
-2. **sound_packet_bridge.py**:
-   - Takes framed packets from the queue
-   - Sends them to minimodem for audio transmission
-   - Receives audio data from minimodem
-   - Validates and parses received packets
-   - Places valid packets in a queue for processing
-
-3. **minimodem** handles the actual audio modulation/demodulation
-
-4. **main.py** integrates all components and provides a simple interface
-
-## Command-Line Options
-
-### Main Options
-
-- `--minimodem PATH`: Path to minimodem executable (default: 'minimodem')
-- `--baud RATE`: Baud rate for minimodem (default: 100)
-- `--mark HZ` / `--space HZ`: tone frequencies (default: minimodem's)
-- `--turnaround SEC`: pause before transmitting so the peer can switch to RX (default: 1.0)
-- `--payload-size SIZE`: Maximum payload size in bytes (default: 64)
-- `--fec`: Enable Reed-Solomon forward error correction
-- `--fec-symbols N`: Number of Reed-Solomon error correction symbols (default: 16)
-- `--arq`: Enable Selective Repeat ARQ for reliable transmission
-- `--timeout SEC`: ARQ ACK timeout (default: computed from airtime)
-
-## Examples
-
-### Simple File Transfer
-
-```
-# Receiver
-python main.py --baud 100 --mark 2300 --space 1900 rx output.txt
-
-# Transmitter
-python main.py --baud 100 --mark 2300 --space 1900 tx input.txt
-```
-
-### Reliable Transfer with Error Correction
-
-For more reliable transmission with error correction and automatic retransmission:
-
-```
-# Receiver
-python main.py --baud 100 --mark 2300 --space 1900 --fec --fec-symbols 64 --arq rx output.txt
-
-# Transmitter
-python main.py --baud 100 --mark 2300 --space 1900 --fec --fec-symbols 64 --arq tx input.txt
-```
-
-## Troubleshooting
-
-- **No data transmission**: Ensure audio levels are appropriate and there's no background noise
-- **Corrupted data**: Try reducing the baud rate or increasing FEC symbols
-- **Slow transmission**: Increase the baud rate or payload size, but be aware this may reduce reliability
-
-Gotcha (dell-g5): if the desktop session restarts and the GDM greeter becomes the active seat
-session, logind hands the sound card to gdm's PipeWire and Direwolf silently plays into
-"Dummy Output". `sudo chvt <vt of the user session>` gives it back.
+Needs `direwolf`, `ax25-tools`, the `ax25`/`mkiss` modules and a desktop session. Only 100 baud
+on 2300/1900 Hz decodes in that room (1200 and 300 baud: nothing). Ping RTT ~25-40 s, UDP ~30 s,
+TCP ~200 bytes each way in ~9 minutes. TCP needed a longer SYN retry budget (`tcp-syncnt=12`),
+egress policers that drop repeated SYN/SYN-ACKs, route `rto_min 30s`, MTU 200, and wide CSMA
+backoff in Direwolf (`SLOTTIME 100`, `PERSIST 32`), because both ends back off identically and
+their retransmits collided on air.
