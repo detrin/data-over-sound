@@ -1,0 +1,19 @@
+//! Data over sound: an adaptive OFDM acoustic modem and a network card over a speaker and a mic.
+pub mod dsp;
+pub mod frame;
+pub mod link;
+pub mod phy;
+pub mod rs;
+pub mod wire;
+pub mod channel;
+pub mod controllers;
+pub mod model;
+pub mod scenario;
+pub mod node;
+pub mod traffic;
+pub mod air;
+pub mod audio;
+pub mod experiments;
+pub mod legacy;
+pub mod net;
+pub mod tun;

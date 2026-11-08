@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Rust
+target/
+interop/rust_frames/
