@@ -1,4 +1,4 @@
-//! Ports of the Python regression tests (ofdm/test_ofdm.py) plus a two-node exchange.
+//! Regression tests (ported from the original Python implementation) plus a two-node exchange.
 
 use dos::channel::AcousticChannel;
 use dos::frame::Header;

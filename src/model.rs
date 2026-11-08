@@ -11,7 +11,7 @@ use rand::{Rng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-const DEFAULT: &str = include_str!("../ofdm/data/snr_model.json");
+const DEFAULT: &str = include_str!("../data/snr_model.json");
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct LevelModel {

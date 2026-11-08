@@ -1,4 +1,5 @@
-//! Interop with the Python reference implementation: golden vectors from interop/golden.py.
+//! Golden vectors recorded from the original Python implementation (tests/golden/): the on-air
+//! format, Reed-Solomon and minimodem framing must stay byte-identical to them.
 
 use dos::frame::{self, Header};
 use dos::link::receive_frame;
@@ -7,12 +8,12 @@ use dos::rs;
 use serde_json::Value;
 
 fn golden(name: &str) -> Value {
-    let p = format!("{}/interop/golden/{}", env!("CARGO_MANIFEST_DIR"), name);
-    serde_json::from_str(&std::fs::read_to_string(p).expect("run interop/golden.py first")).unwrap()
+    let p = format!("{}/tests/golden/{}", env!("CARGO_MANIFEST_DIR"), name);
+    serde_json::from_str(&std::fs::read_to_string(p).expect("golden vector")).unwrap()
 }
 
 fn read_wav(name: &str) -> Vec<f64> {
-    let p = format!("{}/interop/golden/{}", env!("CARGO_MANIFEST_DIR"), name);
+    let p = format!("{}/tests/golden/{}", env!("CARGO_MANIFEST_DIR"), name);
     hound::WavReader::open(p).unwrap().samples::<i16>().map(|s| s.unwrap() as f64 / 32768.0).collect()
 }
 

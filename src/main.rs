@@ -73,7 +73,7 @@ enum Cmd {
     Calibrate {
         #[arg(long, default_value_t = 10)]
         frames: usize,
-        #[arg(long, default_value = "ofdm/data/snr_model.json")]
+        #[arg(long, default_value = "data/snr_model.json")]
         out: String,
     },
     /// Compare link-adaptation strategies in the simulator under changing noise
@@ -112,7 +112,7 @@ enum Cmd {
         #[arg(long, default_value_t = 40)]
         max_rounds: usize,
     },
-    /// Write frames for the Python implementation to decode (interop test)
+    /// Write test frames (WAV + JSON with header and payloads) for other decoders
     InteropGen { dir: String },
 }
 

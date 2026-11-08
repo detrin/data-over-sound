@@ -10,10 +10,10 @@ binary, `dos`:
 - **Research tools**: room measurement, channel simulator, SNR-model calibration and a comparison
   of link-adaptation strategies, in simulation and over the air with broadcast noise.
 
-The Python implementation it was ported from is kept as the **reference implementation**
-(`ofdm/`, `main.py`): the two are wire-compatible and tested against each other
-([Rust and Python](#rust-and-python-interop-and-tests)). `ax25/` is a separate, slower IP link over
-Direwolf and the kernel AX.25 stack.
+The project started in Python; that implementation was ported to Rust and removed (it is in the
+git history up to commit 35d4ef5). The on-air format is unchanged, and golden vectors recorded
+from the Python version keep it byte-identical ([tests](#tests-and-compatibility)). `ax25/` is a
+separate, slower IP link over Direwolf and the kernel AX.25 stack.
 
 ## Install
 
@@ -115,7 +115,7 @@ own header with an ACK bitmap; there is no side channel. Strategies were compare
 changing-noise scenario (quiet, jammer 2-4 kHz, jammer 6-9 kHz, broadband noise, 1-5 kHz bursts,
 quiet), over the air with the receiving laptop broadcasting the noise from its own speaker:
 
-| strategy | sim, Python | sim, Rust | air, paired vs fixed D8PSK |
+| strategy | sim (Python version) | sim (Rust) | air, paired vs fixed D8PSK |
 |---|---|---|---|
 | Thompson sampling + SNR prior (gamma 0.7) | 5.58 kbit/s | 5.54 | **+584 +/- 173** / -130 +/- 221 bit/s |
 | ... + online SNR-model calibration | 5.55 | 5.50 | +494 +/- 229 / -196 +/- 311 |
@@ -129,18 +129,18 @@ for file transfer. For the network card (Rust) it is made risk-averse (maximise
 `capacity * p^2`): an IP packet spans several tiles and needs all of them, so tile reliability is
 worth more than raw tile throughput (-2% throughput, +4 points tile success in simulation).
 
-## Rust and Python: interop and tests
+## Tests and compatibility
 
-The Rust port keeps the Python on-air format, so the two interoperate; the pseudo-random tables
-that define it (reference phases, pilots, header scattering) were drawn with numpy's generator
-and are exported once to `ofdm/data/wire_v1.bin`, which `dos` embeds.
+`dos` keeps the on-air format of the original Python implementation; the pseudo-random tables that
+define it (reference phases, pilots, header scattering) were drawn with numpy's generator and
+live in `data/wire_v1.bin`, which `dos` embeds. Before the Python code was removed, the two were
+tested against each other in every combination below.
 
 - `cargo test`: Reed-Solomon codewords and corrections identical to `reedsolo`; header packing,
-  sync chirp, minimodem framing (CRC32, RS, COBS, base64 markers) identical to Python; Rust
-  decodes Python frames byte-exact (`interop/golden.py` writes the vectors); loopback, file
-  selective repeat, IP fragmentation and a two-node exchange over the simulated room.
-- `dos interop-gen DIR && python interop/check_rust_frames.py DIR`: Python decodes Rust frames
-  byte-exact.
+  sync chirp and minimodem framing (CRC32, RS, COBS, base64 markers) identical to the Python
+  version; frames recorded from it decode byte-exact (`tests/golden/`); loopback, file selective
+  repeat, IP fragmentation and a two-node exchange over the simulated room.
+- The Python decoder decoded frames written by `dos interop-gen` byte-exact.
 - Simulation: the strategy comparison gives the same ranking and numbers within noise
   (table above).
 - Over the air, dell-g5 and e540, 2026-11-08 (a VMware VM was running on dell-g5 and its fans
@@ -156,33 +156,17 @@ and are exported once to `ofdm/data/wire_v1.bin`, which `dos` embeds.
   | `dos duplex --air --noise` (from a control machine; six broadcast noise phases) | 81,628 B and 11,191 B both ways, identical, in 26 rounds |
 
 Differences from the Python version (the on-air format is unchanged): one static binary with the
-SNR model embedded; `dos net up/start/stop/status/down` replace `ofdmnet.sh`; the network card
+SNR model embedded; `dos net up/start/stop/status/down` replaced a shell script; the network card
 uses a risk-averse controller, MTU 576, up to 6 fragment retries and better idle detection
 (round trips 17-26 s instead of 17-50 s); the simulator runs strategies in parallel; frames
 decode in ~0.1 s on the laptops.
 
-## Python reference implementation
+## minimodem file transfer
 
-```bash
-uv sync                                         # numpy, scipy, reedsolo
-uv run python -m ofdm.check_phy                 # PHY check
-uv run python -m ofdm.measure_channel           # room measurement
-uv run python -m ofdm.simulate                  # strategy comparison
-uv run python -m ofdm.duplex --air --noise      # two-way transfer over the air
-uv run python -m ofdm.test_ofdm                 # tests
-ofdm/ofdmnet.sh up 10.78.0.1/24 && ofdm/ofdmnet.sh start leader   # network card (Python)
-python main.py --baud 100 --mark 2300 --space 1900 --fec --arq rx out.txt   # minimodem receiver
-python main.py --baud 100 --mark 2300 --space 1900 --fec --arq tx in.txt    # minimodem sender
-```
-
-The Python network card needs numpy, scipy and reedsolo on both machines (Ubuntu:
-`apt install python3-numpy python3-scipy python3-reedsolo`; NixOS: a `python3.withPackages`
-with the three, passed as `PYTHON=` to `ofdmnet.sh`).
-
-**minimodem transfer.** Pick mark/space where the speaker-to-microphone path is flat: laptop
-speakers are weak below ~1 kHz, and minimodem's default 1270/1070 Hz pair arrived with the
-1070 Hz tone 15 dB down, which made every decode fail. 2300/1900 Hz at 100 baud worked in both
-directions, ~10-15 bit/s with ARQ.
+`dos modem send/recv` drives the external `minimodem` tool at 100 baud. Mark/space must sit
+where the speaker-to-microphone path is flat: laptop speakers are weak below ~1 kHz, and
+minimodem's default 1270/1070 Hz pair arrived with the 1070 Hz tone 15 dB down, which made every
+decode fail. 2300/1900 Hz (the default here) worked in both directions, ~13 bit/s with ARQ.
 
 ## IP over AX.25 (`ax25/`)
 

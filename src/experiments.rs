@@ -353,7 +353,7 @@ pub fn duplex(hosts: Option<&Hosts>, file_a: &str, file_b: &str, noise: bool, ro
     Ok(())
 }
 
-/// Frames for the Python implementation to decode (interop): DIR/frame_<name>.wav + .json.
+/// Test frames for other decoders: DIR/frame_<name>.wav + .json (header and payloads).
 pub fn interop_gen(dir: &str) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
     let phy = Phy::new(PhyConfig::default());

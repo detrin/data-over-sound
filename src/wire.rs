@@ -1,10 +1,10 @@
 //! Fixed pseudo-random tables that define the on-air format.
 //!
-//! The default configuration uses the tables exported from the Python reference implementation
-//! (`ofdm/data/wire_v1.bin`, numpy PCG64 draws), so the Rust and Python modems interoperate. Any
-//! other configuration gets tables from a deterministic SplitMix64 generator (Rust-only format).
+//! The default configuration uses fixed tables (`data/wire_v1.bin`, originally numpy PCG64 draws
+//! from the first, Python, implementation; the on-air format is unchanged since). Any other
+//! configuration gets tables from a deterministic SplitMix64 generator.
 
-const WIRE_V1: &[u8] = include_bytes!("../ofdm/data/wire_v1.bin");
+const WIRE_V1: &[u8] = include_bytes!("../data/wire_v1.bin");
 
 pub struct WireTables {
     /// reference phase index per subcarrier (phase = pi/2 * k + pi/4)

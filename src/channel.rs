@@ -1,4 +1,4 @@
-//! Acoustic channel simulator calibrated from measurements (`ofdm/data/channel_*.json`):
+//! Acoustic channel simulator calibrated from measurements (`data/channel_*.json`):
 //! rx = gain * (tx * room IR), resampled by the sound-card clock offset, + measured background
 //! noise + time-varying interferers.
 
@@ -62,7 +62,7 @@ pub struct ChannelData {
 
 impl ChannelData {
     pub fn path(name: &str) -> String {
-        format!("{}/ofdm/data/channel_{}.json", env!("CARGO_MANIFEST_DIR"), name)
+        format!("{}/data/channel_{}.json", env!("CARGO_MANIFEST_DIR"), name)
     }
     pub fn load(name: &str) -> anyhow::Result<Self> {
         Ok(serde_json::from_str(&std::fs::read_to_string(Self::path(name))?)?)

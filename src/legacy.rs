@@ -1,5 +1,5 @@
 //! The original minimodem file transfer (100 baud MFSK through the external `minimodem` tool),
-//! wire-compatible with the Python version (`main.py`): Stop-and-Wait ARQ packets
+//! wire-compatible with the original Python version: Stop-and-Wait ARQ packets
 //! ([type u8][seq u32][total u32][payload], big endian), framed as raw | CRC32 -> optional
 //! Reed-Solomon -> COBS, sent as base64 between BEGIN_DATA / END_DATA markers.
 
