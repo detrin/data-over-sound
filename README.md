@@ -95,6 +95,36 @@ dos compare --finalists                                   # strategy comparison 
 `measure`, `compare` and `duplex --air` run on a control machine and drive the two laptops over
 ssh (`--hosts dell-g5,e540`); the laptops only play and record.
 
+## Web app (phones and laptops)
+
+`web/` is a browser app on the same Rust code: `wasm/` compiles the `dos` library to WebAssembly
+and wraps it without changing the on-air format.
+
+- **Adaptive**: the OFDM link with the network card's turn-taking (`net.rs`). The sending device
+  is the leader, the receiving one the follower; traffic is `FileSender` / `FileReceiver`, with a
+  small envelope (`DOSW`, name and type) in front of the bytes. On the Standard band (0.8-10 kHz)
+  frames are byte-identical to `dos`; other bands use the generated tables and only talk to the
+  app on the same band.
+- **Classic**: the `dos modem` transfer without minimodem: the app has its own 100 baud FSK modem
+  (2300/1900 Hz, 8N1) and runs `legacy.rs` framing and Stop-and-Wait, so it works with
+  `dos modem send/recv` and with minimodem itself (tested both ways against minimodem 0.24 WAVs).
+  Payloads are raw bytes, as `dos modem recv` writes them.
+- **Receive** listens for both at once. **Link** shows every tile of the last frame (level,
+  success, header SNR) and the map in use; **Band** picks the range.
+- **Simulated** mode runs a second device in the browser through the measured room
+  (`data/channel_*.json`, `channel::AcousticChannel`) with the `scenario` interferers, so every
+  screen works without audio. **Live** uses the speaker and microphone with echo cancellation,
+  noise suppression and auto gain turned off.
+
+```bash
+cd wasm && wasm-pack build --release --target web --out-dir ../web/src/lib/dos --out-name dos
+cd ../web && pnpm install && pnpm dev     # http://localhost:5173 (also on the LAN)
+pnpm build                                # static site in dist/, works offline (PWA)
+cargo test --release -p dos-wasm          # two stations over the measured room; minimodem interop
+```
+
+The microphone needs HTTPS (or localhost), so serve `dist/` from a static host for phones.
+
 ## How it works
 
 **The room.** The impulse response between the laptops is very reverberant: 60 ms after the
