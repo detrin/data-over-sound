@@ -9,6 +9,8 @@ binary, `dos`:
   transfer.
 - **Research tools**: room measurement, channel simulator, SNR-model calibration and a comparison
   of link-adaptation strategies, in simulation and over the air with broadcast noise.
+- **Web app**: the same modem in the browser, for phones and laptops:
+  **[data-over-sound.vercel.app](https://data-over-sound.vercel.app)**.
 
 The project started in Python; that implementation was ported to Rust and removed (it is in the
 git history up to commit 35d4ef5). The on-air format is unchanged, and golden vectors recorded
@@ -97,6 +99,9 @@ ssh (`--hosts dell-g5,e540`); the laptops only play and record.
 
 ## Web app (phones and laptops)
 
+**Live: [data-over-sound.vercel.app](https://data-over-sound.vercel.app)**. Open it on two
+devices, start Receive on one and send from the other.
+
 `web/` is a browser app on the same Rust code: `wasm/` compiles the `dos` library to WebAssembly
 and wraps it without changing the on-air format.
 
@@ -126,6 +131,15 @@ cargo test --release -p dos-wasm          # two stations over the measured room;
 ```
 
 The microphone needs HTTPS (or localhost), so serve `dist/` from a static host for phones.
+
+Deployment: Vercel builds `web/` on every push to `main` (`web/vercel.json`); the build installs
+Rust, the wasm32 target and wasm-pack (`web/scripts/vercel-build.sh`), then runs `pnpm wasm` and
+`pnpm build`.
+
+Over the air, dell-g5 and e540, 2026-11-16, production build from Vercel in Chrome: Adaptive
+delivered a message both ways in 18 s (one frame each way). Classic failed both ways that night,
+and so did minimodem itself with no browser involved: the 2300 Hz tone arrived 8-21 dB below the
+1900 Hz one in that placement.
 
 ## How it works
 
