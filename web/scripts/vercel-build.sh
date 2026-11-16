@@ -5,10 +5,11 @@ set -euo pipefail
 
 WASM_PACK=0.13.1
 
-if ! command -v cargo >/dev/null; then
-  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --target wasm32-unknown-unknown
+# The image may ship a system cargo without rustup, which cannot add the wasm32 target.
+export PATH="$HOME/.cargo/bin:$PATH"
+if ! command -v rustup >/dev/null; then
+  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path --target wasm32-unknown-unknown
 fi
-source "$HOME/.cargo/env"
 rustup target add wasm32-unknown-unknown
 
 if ! command -v wasm-pack >/dev/null; then
