@@ -18,3 +18,5 @@ web/node_modules/
 web/dist/
 web/src/lib/dos/
 web/src/lib/wasm/
+.vercel
+.env*
