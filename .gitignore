@@ -12,3 +12,9 @@ wheels/
 # Rust
 target/
 interop/rust_frames/
+
+# Web app
+web/node_modules/
+web/dist/
+web/src/lib/dos/
+web/src/lib/wasm/

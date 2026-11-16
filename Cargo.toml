@@ -27,8 +27,14 @@ libc = "0.2"
 base64 = "0.22"
 anyhow = "1.0"
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
 [dev-dependencies]
 hex = "0.4"
+
+[workspace]
+members = ["wasm"]
 
 [profile.release]
 opt-level = 3

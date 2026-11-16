@@ -1,0 +1,23 @@
+[package]
+name = "dos-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Browser bindings for the dos adaptive OFDM modem (used by web/)"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+data-over-sound = { path = ".." }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+wasm-bindgen = "0.2"
+num-complex = "0.4"
+
+[dev-dependencies]
+hound = "3.5"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3"]
