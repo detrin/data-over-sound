@@ -15,7 +15,7 @@ rustup target add wasm32-unknown-unknown
 if ! command -v wasm-pack >/dev/null; then
   curl -sSfL "https://github.com/rustwasm/wasm-pack/releases/download/v$WASM_PACK/wasm-pack-v$WASM_PACK-x86_64-unknown-linux-musl.tar.gz" \
     | tar xz -C /tmp
-  install -D -t "$HOME/.cargo/bin" "/tmp/wasm-pack-v$WASM_PACK-x86_64-unknown-linux-musl/wasm-pack" "$HOME/.cargo/bin/"
+  install -D -t "$HOME/.cargo/bin" "/tmp/wasm-pack-v$WASM_PACK-x86_64-unknown-linux-musl/wasm-pack"
 fi
 
 pnpm wasm
