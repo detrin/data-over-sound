@@ -122,7 +122,7 @@ export async function ensureAudio(): Promise<boolean> {
     });
     await audio.audioWorklet.addModule(captureUrl);
     const src = audio.createMediaStreamSource(micStream);
-    const node = new AudioWorkletNode(audio, 'soundlink-capture', { numberOfInputs: 1, numberOfOutputs: 0 });
+    const node = new AudioWorkletNode(audio, 'dos-capture', { numberOfInputs: 1, numberOfOutputs: 0 });
     const ch = new MessageChannel();
     node.port.postMessage({ port: ch.port2 }, [ch.port2]);
     postW({ t: 'mic_port', port: ch.port1 }, [ch.port1]);

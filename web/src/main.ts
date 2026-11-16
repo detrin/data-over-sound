@@ -6,6 +6,6 @@ import { mount } from 'svelte';
 import App from './App.svelte';
 import { app, settings } from './lib/state.svelte';
 
-if (import.meta.env.DEV) (window as unknown as { __soundlink: unknown }).__soundlink = { app, settings };
+if (import.meta.env.DEV) (window as unknown as { __dos: unknown }).__dos = { app, settings };
 
 export default mount(App, { target: document.getElementById('app')! });

@@ -32,18 +32,18 @@ async function open(name, x) {
   page.on('console', (m) => m.type() === 'error' && console.log(`[${name}] console: ${m.text()}`));
   await page.goto(url);
   await page.evaluate(
-    ([mode, band]) => localStorage.setItem('soundlink.dos.settings.v1', JSON.stringify({ simulate: false, mode, ...band, volume: 1 })),
+    ([mode, band]) => localStorage.setItem('dos.settings.v1', JSON.stringify({ simulate: false, mode, ...band, volume: 1 })),
     [mode, band],
   );
   await page.reload();
-  await page.waitForFunction(() => window.__soundlink?.app.ready, null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__dos?.app.ready, null, { timeout: 20000 });
   void x;
   return page;
 }
 
 const snap = (page) =>
   page.evaluate(() => {
-    const { app } = window.__soundlink;
+    const { app } = window.__dos;
     const s = app.status;
     const c = app.classic;
     return {

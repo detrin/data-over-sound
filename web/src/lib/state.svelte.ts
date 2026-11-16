@@ -30,7 +30,7 @@ export const PRESETS: Preset[] = [
   { id: 'high', name: 'High', detail: '12–18 kHz. Quieter to the ear; needs speakers and mics that reach it.', lo: 12_000, hi: 18_000 },
 ];
 
-const KEY = 'soundlink.dos.settings.v1';
+const KEY = 'dos.settings.v1';
 
 /** Simulation is a development tool: only `pnpm dev` offers it; production always uses real audio. */
 export const SIM_AVAILABLE = import.meta.env.DEV;

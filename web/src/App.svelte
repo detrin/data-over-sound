@@ -41,7 +41,7 @@
         <g fill="currentColor"><rect x="12" y="26" width="4" height="12" rx="2" /><rect x="20" y="18" width="4" height="28" rx="2" /><rect x="28" y="22" width="4" height="20" rx="2" /></g>
         <g fill="var(--ultra)"><rect x="38" y="14" width="4" height="36" rx="2" /><rect x="46" y="20" width="4" height="24" rx="2" /></g>
       </svg>
-      <span>soundlink</span>
+      <span>Data over sound</span>
     </div>
     {#if SIM_AVAILABLE}
     <div class="source" role="radiogroup" aria-label="Audio source (development build)" title="Development build only">
@@ -117,7 +117,8 @@
     gap: 8px;
     font-family: var(--display);
     font-weight: 700;
-    font-size: var(--s-21);
+    font-size: clamp(1rem, 4.4vw, var(--s-21));
+    white-space: nowrap;
     letter-spacing: -0.02em;
     font-variation-settings: 'wdth' 90;
   }
@@ -132,7 +133,7 @@
   .source button {
     min-height: 44px;
     min-width: 44px;
-    padding: 0 14px;
+    padding: 0 12px;
     border: 0;
     border-radius: 999px;
     background: transparent;

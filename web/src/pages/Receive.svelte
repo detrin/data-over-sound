@@ -22,7 +22,7 @@
   async function share(r: Received) {
     if (!r.url) return;
     const blob = await (await fetch(r.url)).blob();
-    const file = new File([blob], r.name || 'soundlink-file', { type: r.mime || blob.type });
+    const file = new File([blob], r.name || 'data-over-sound-file', { type: r.mime || blob.type });
     if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file] }).catch(() => {});
   }
 
@@ -101,7 +101,7 @@
                 <span class="hint">{formatBytes(r.size)} at {time(r.at)}</span>
               </div>
               <div class="row actions">
-                <a class="btn btn-primary small" href={r.url} download={r.name || 'soundlink-file'}>Save</a>
+                <a class="btn btn-primary small" href={r.url} download={r.name || 'data-over-sound-file'}>Save</a>
                 {#if canShare()}
                   <button class="btn btn-quiet small" onclick={() => share(r)}>Share</button>
                 {/if}

@@ -11,8 +11,8 @@ export default defineConfig({
       includeAssets: ['icon.svg'],
       workbox: { globPatterns: ['**/*.{js,css,html,wasm,svg,woff2,json}'], maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 },
       manifest: {
-        name: 'soundlink',
-        short_name: 'soundlink',
+        name: 'Data over sound',
+        short_name: 'Data over sound',
         description: 'Send messages and files between devices over sound, no network needed.',
         theme_color: '#e8ebee',
         background_color: '#e8ebee',

@@ -33,4 +33,4 @@ class Capture extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('soundlink-capture', Capture);
+registerProcessor('dos-capture', Capture);
