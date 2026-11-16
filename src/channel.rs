@@ -77,7 +77,12 @@ pub struct AcousticChannel {
 
 impl AcousticChannel {
     pub fn new(name: &str, seed: u64) -> anyhow::Result<Self> {
-        Ok(Self { data: ChannelData::load(name)?, drift_ppm: 1.0, rng: StdRng::seed_from_u64(seed) })
+        Ok(Self::from_data(ChannelData::load(name)?, seed))
+    }
+
+    /// From already-loaded measurement data (e.g. fetched by a browser).
+    pub fn from_data(data: ChannelData, seed: u64) -> Self {
+        Self { data, drift_ppm: 1.0, rng: StdRng::seed_from_u64(seed) }
     }
 
     fn noise(&mut self, n: usize, fs: f64) -> Vec<f64> {

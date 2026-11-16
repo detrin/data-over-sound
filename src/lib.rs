@@ -11,9 +11,14 @@ pub mod model;
 pub mod scenario;
 pub mod node;
 pub mod traffic;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod air;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod audio;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod experiments;
 pub mod legacy;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod net;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod tun;

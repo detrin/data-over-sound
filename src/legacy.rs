@@ -5,9 +5,13 @@
 
 use crate::rs;
 use base64::Engine;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::{Read, Write};
+#[cfg(not(target_arch = "wasm32"))]
 use std::process::{Child, Command, Stdio};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
 
 const BEGIN: &[u8] = b"BEGIN_DATA\n";
@@ -174,6 +178,7 @@ pub struct ModemArgs {
 }
 
 impl ModemArgs {
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     fn common(&self) -> Vec<String> {
         let mut a = vec!["--quiet".to_string()];
         if let Some(m) = self.mark {
@@ -187,6 +192,7 @@ impl ModemArgs {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Half-duplex bridge: a minimodem listener runs except while a frame is being played.
 fn bridge(args: ModemArgs, tx: Receiver<Vec<u8>>, rx: Sender<Vec<u8>>) {
     let start_rx = |a: &ModemArgs| -> Child {
@@ -262,6 +268,7 @@ pub struct TransferArgs {
 }
 
 impl TransferArgs {
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     fn ack_timeout(&self) -> f64 {
         let flen = |payload: usize| {
             let raw = 9 + payload + 4 + self.fec;
@@ -271,6 +278,7 @@ impl TransferArgs {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn start(a: &TransferArgs) -> (Sender<Vec<u8>>, Receiver<Vec<u8>>, Framer) {
     let (tx_s, tx_r) = channel();
     let (rx_s, rx_r) = channel();
@@ -279,6 +287,7 @@ fn start(a: &TransferArgs) -> (Sender<Vec<u8>>, Receiver<Vec<u8>>, Framer) {
     (tx_s, rx_r, Framer { fec: a.fec })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Send `data` reliably (stop-and-wait, EOT acknowledged). Returns true if everything was ACKed.
 pub fn send(a: &TransferArgs, data: &[u8]) -> bool {
     let (tx, rx, framer) = start(a);
@@ -320,6 +329,7 @@ pub fn send(a: &TransferArgs, data: &[u8]) -> bool {
     true
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Receive until EOT (then linger to re-ACK a lost final ACK). Returns the data and completeness.
 pub fn receive(a: &TransferArgs, max_wait: Duration) -> (Vec<u8>, bool) {
     let (tx, rx, framer) = start(a);
