@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import Waterfall from './components/Waterfall.svelte';
   import { configure } from './lib/engine';
-  import { app, settings, type Page, isBusy } from './lib/state.svelte';
+  import { app, settings, type Page, isBusy, SIM_AVAILABLE } from './lib/state.svelte';
   import Band from './pages/Band.svelte';
   import Link from './pages/Link.svelte';
   import Receive from './pages/Receive.svelte';
@@ -43,10 +43,12 @@
       </svg>
       <span>soundlink</span>
     </div>
-    <div class="source" role="radiogroup" aria-label="Audio source">
+    {#if SIM_AVAILABLE}
+    <div class="source" role="radiogroup" aria-label="Audio source (development build)" title="Development build only">
       <button role="radio" aria-checked={settings.simulate} class:on={settings.simulate} disabled={busy} onclick={() => setSimulate(true)}>Simulated</button>
       <button role="radio" aria-checked={!settings.simulate} class:on={!settings.simulate} disabled={busy} onclick={() => setSimulate(false)}>Live</button>
     </div>
+    {/if}
     <nav class="tabs-desktop" aria-label="Sections">
       {#each NAV as n (n.id)}
         <button class:current={app.page === n.id} aria-current={app.page === n.id ? 'page' : undefined} onclick={() => (app.page = n.id)}>{n.label}</button>
@@ -57,8 +59,8 @@
   <div class="stage">
     <section class="scope">
       <Waterfall />
-      {#if settings.simulate}
-        <p class="sim-note hint">Simulated: a second device answers through a room measured between two laptops. Switch to Live for real speakers and mics.</p>
+      {#if SIM_AVAILABLE && settings.simulate}
+        <p class="sim-note hint">Development build. Simulated: a second device answers through a room measured between two laptops. Switch to Live for real speakers and mics.</p>
       {/if}
     </section>
 

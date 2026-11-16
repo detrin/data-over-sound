@@ -46,7 +46,7 @@
   {:else}
     <h1>Receive</h1>
     <p class="hint lead">Start listening here, then send from the other device. Both must use the same band.</p>
-    <button class="btn btn-primary btn-wide" class:live={!settings.simulate} disabled={!app.ready} onclick={listen}>Start listening</button>
+    <button class="btn btn-primary btn-wide" disabled={!app.ready} onclick={listen}>Start listening</button>
   {/if}
 
   {#if arriving}

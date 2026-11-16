@@ -111,10 +111,12 @@ and wraps it without changing the on-air format.
   Payloads are raw bytes, as `dos modem recv` writes them.
 - **Receive** listens for both at once. **Link** shows every tile of the last frame (level,
   success, header SNR) and the map in use; **Band** picks the range.
-- **Simulated** mode runs a second device in the browser through the measured room
-  (`data/channel_*.json`, `channel::AcousticChannel`) with the `scenario` interferers, so every
-  screen works without audio. **Live** uses the speaker and microphone with echo cancellation,
-  noise suppression and auto gain turned off.
+- The app uses the speaker and microphone with echo cancellation, noise suppression and auto
+  gain turned off.
+- For development only, `pnpm dev` adds a **Simulated** mode: a second device in the browser
+  through the measured room (`data/channel_*.json`, `channel::AcousticChannel`) with the
+  `scenario` interferers, to test every screen without audio. Production builds (`pnpm build`)
+  leave it out, including the measured-room data.
 
 ```bash
 cd wasm && wasm-pack build --release --target web --out-dir ../web/src/lib/dos --out-name dos

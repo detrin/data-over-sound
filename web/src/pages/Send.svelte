@@ -190,7 +190,7 @@
 
     <p class="hint">Start <strong>Receive</strong> on the other device first.</p>
 
-    <button class="btn btn-primary btn-wide" class:live={!settings.simulate} disabled={!payloadReady || !app.ready} onclick={start}>
+    <button class="btn btn-primary btn-wide" disabled={!payloadReady || !app.ready} onclick={start}>
       {kind === 'message' ? 'Send message' : 'Send file'}
     </button>
   </section>

@@ -2,8 +2,8 @@
 // Runs the dos modems off the main thread.
 // - live: microphone chunks arrive on a MessagePort from the capture worklet; waveforms to transmit
 //   are posted to the main thread to play.
-// - simulated: a second device shares the measured room (data/channel_*.json) with this one, and
-//   the air is advanced on a timer, so every screen works without audio.
+// - simulated (development builds only): a second device shares the measured room
+//   (data/channel_*.json) with this one, and the air is advanced on a timer, for testing without audio.
 //
 // A device holds one or two "radios" that share its microphone and take turns on its speaker:
 // the adaptive OFDM station and the classic (dos modem) station. Listening runs both, so either
@@ -11,8 +11,6 @@
 
 import init, { Air, ClassicStation, Spectrum, Station, band_info, scenario_names } from './dos/dos.js';
 import wasmUrl from './dos/dos_bg.wasm?url';
-import abUrl from '../../../data/channel_dell-g5_to_e540.json?url';
-import baUrl from '../../../data/channel_e540_to_dell-g5.json?url';
 import type { Band, BandInfo, ClassicStatus, FromWorker, Mode, SimSetup, StationStatus, ToWorker, View } from './types';
 import { FLAG_MESSAGE } from './types';
 
@@ -132,9 +130,19 @@ function now(): number {
 const ofdmStatus = (d: Device): StationStatus | null => (d.ofdm ? JSON.parse(d.ofdm.st.status_json()) : null);
 const classicStatus = (d: Device): ClassicStatus | null => (d.classic ? JSON.parse(d.classic.st.status_json()) : null);
 
+/** The measured room, for the development-only simulation (not bundled in production builds). */
 async function loadChannels(): Promise<[string, string]> {
-  channels ??= await Promise.all([fetch(abUrl).then((r) => r.text()), fetch(baUrl).then((r) => r.text())]);
-  return channels;
+  if (import.meta.env.DEV) {
+    if (!channels) {
+      const [ab, ba] = await Promise.all([
+        import('../../../data/channel_dell-g5_to_e540.json?url'),
+        import('../../../data/channel_e540_to_dell-g5.json?url'),
+      ]);
+      channels = await Promise.all([fetch(ab.default).then((r) => r.text()), fetch(ba.default).then((r) => r.text())]);
+    }
+    return channels;
+  }
+  throw new Error('Simulation is only available in the development build.');
 }
 
 function reset() {

@@ -56,7 +56,7 @@
   });
 
   const idleText = $derived(
-    settings.simulate ? 'Loading the measured room…' : 'Waiting for the microphone. Tap Send or Start listening.',
+    settings.simulate ? 'Loading the measured room…' : 'The microphone turns on when you tap Send or Start listening.',
   );
 </script>
 

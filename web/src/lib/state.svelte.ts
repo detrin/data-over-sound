@@ -32,11 +32,16 @@ export const PRESETS: Preset[] = [
 
 const KEY = 'soundlink.dos.settings.v1';
 
-const DEFAULTS: Settings = { mode: 'adaptive', lo: 800, hi: 10_000, volume: 1, simulate: true, simSpeed: 1, simScenario: 0 };
+/** Simulation is a development tool: only `pnpm dev` offers it; production always uses real audio. */
+export const SIM_AVAILABLE = import.meta.env.DEV;
+
+const DEFAULTS: Settings = { mode: 'adaptive', lo: 800, hi: 10_000, volume: 1, simulate: SIM_AVAILABLE, simSpeed: 1, simScenario: 0 };
 
 function load(): Settings {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+    const s: Settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+    if (!SIM_AVAILABLE) s.simulate = false;
+    return s;
   } catch {
     return { ...DEFAULTS };
   }
