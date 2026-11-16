@@ -20,6 +20,10 @@ const TAIL_S: f64 = 0.7;
 const DECODE_MARGIN_S: f64 = 0.4;
 const FALSE_ALARM_SNR_DB: f64 = 3.0;
 const SEARCH_EVERY_S: f64 = 0.5;
+/// Wait this long after the end of a heard frame before answering. The peer ignores its microphone
+/// for TAIL_S after it stops transmitting (plus output/input latency); answering sooner can put
+/// our sync chirp inside that window, and the whole frame is missed.
+const ANSWER_GUARD_S: f64 = TAIL_S + 0.4;
 
 /// File envelope inside the transferred byte stream: name and type travel with the data.
 /// `DOSW | version | flags | name_len | name | mime_len | mime | data`. A stream without the
@@ -83,7 +87,7 @@ pub enum Role {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum State {
-    /// leader: about to send the next frame
+    /// about to send the next frame (waits out the answer guard first)
     Ready,
     Transmitting,
     Listening,
@@ -134,6 +138,9 @@ pub struct Station {
     last_search_len: usize,
     state: State,
     deadline_ms: f64,
+    /// absolute sample index before which this station must not start transmitting
+    not_before: usize,
+    heard_end: usize,
     frames_heard: u64,
     false_alarms: u64,
     last: Option<LastFrame>,
@@ -165,6 +172,8 @@ impl Station {
             last_search_len: 0,
             state,
             deadline_ms: f64::INFINITY,
+            not_before: 0,
+            heard_end: 0,
             frames_heard: 0,
             false_alarms: 0,
             last: None,
@@ -202,19 +211,18 @@ impl Station {
     pub fn poll(&mut self, now_ms: f64) -> Option<Vec<f32>> {
         match self.state {
             State::Done | State::Transmitting => None,
-            State::Ready => Some(self.transmit()),
+            State::Ready => (self.rec_end() >= self.not_before).then(|| self.transmit()),
             State::Listening => {
                 if let Some(seg) = self.find_frame() {
                     self.on_frame(&seg);
-                    return match self.role {
-                        Role::Follower => Some(self.transmit()),
-                        Role::Leader if self.sending_done() => {
-                            self.state = State::Done;
-                            self.say("everything acknowledged".into());
-                            None
-                        }
-                        Role::Leader => Some(self.transmit()),
-                    };
+                    if self.role == Role::Leader && self.sending_done() {
+                        self.state = State::Done;
+                        self.say("everything acknowledged".into());
+                        return None;
+                    }
+                    self.not_before = self.heard_end + (ANSWER_GUARD_S * self.phy.cfg.fs as f64) as usize;
+                    self.state = State::Ready;
+                    return self.poll(now_ms);
                 }
                 if self.role == Role::Leader && now_ms > self.deadline_ms {
                     self.node.on_lost();
@@ -283,6 +291,7 @@ impl Station {
             self.last_search_len = 0;
             return None;
         }
+        self.heard_end = wstart + st - sync + frame;
         self.listen_from = wstart + end;
         self.last_search_len = 0;
         Some(seg)
